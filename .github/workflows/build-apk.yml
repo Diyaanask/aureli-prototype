@@ -25,16 +25,15 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Prepare Web Assets & Install Dependencies
+      - name: Install Dependencies & Build Web Project
         run: |
-          mkdir -p www
-          cp -r index.html www/ 2>/dev/null || true
-          cp -r *.js www/ 2>/dev/null || true
-          cp -r *.css www/ 2>/dev/null || true
-          cp -r *.png www/ 2>/dev/null || true
           npm ci || npm install
           npm install --save-dev @capacitor/cli @capacitor/core @capacitor/android @capacitor/assets
           
+          # Build your React/Vite project into production JavaScript
+          npm run build
+
+          # Ensure Capacitor Android platform exists
           if [ ! -d "android" ]; then
             npx cap add android
           fi
@@ -43,8 +42,6 @@ jobs:
         run: |
           if [ -d "assets" ]; then
             npx @capacitor/assets generate --android || echo "Asset generation failed, continuing..."
-          else
-            echo "No assets folder found, skipping icon generation."
           fi
 
       - name: Sync Capacitor Platform
