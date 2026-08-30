@@ -60,7 +60,7 @@ jobs:
                   resolutionStrategy {
                       dependencySubstitution {
                           substitute module('org.jetbrains.kotlin:kotlin-stdlib-jdk7') using module('org.jetbrains.kotlin:kotlin-stdlib:1.8.22')
-                          substitute module('org.jetbrains.kotlin:kotlin-stdlib:1.8.22') using module('org.jetbrains.kotlin:kotlin-stdlib:1.8.22')
+                          substitute module('org.jetbrains.kotlin:kotlin-stdlib-jdk8') using module('org.jetbrains.kotlin:kotlin-stdlib:1.8.22')
                       }
                   }
               }
@@ -81,25 +81,34 @@ jobs:
             -alias "${{ secrets.KEY_ALIAS }}" \
             -storepass "${{ secrets.KEYSTORE_PASSWORD }}" \
             -keypass "${{ secrets.KEY_PASSWORD }}" \
-            -dname "CN=App Developer, OU=Dev, O=App, L=City, ST=State, C=US"
+            -dname "CN=Aureli Developer, OU=Dev, O=Aureli, L=City, ST=State, C=US"
 
       - name: Build Release APK with Gradle
         run: |
           cd android
           ./gradlew assembleRelease
 
-      - name: Sign APK
-        uses: r3d-bucket/signing-action@v1.1
-        id: sign_app
-        with:
-          releaseDirectory: android/app/build/outputs/apk/release
-          signingKeyFile: release-key.jks
-          alias: ${{ secrets.KEY_ALIAS }}
-          keyStorePassword: ${{ secrets.KEYSTORE_PASSWORD }}
-          keyPassword: ${{ secrets.KEY_PASSWORD }}
+      - name: Align and Sign APK
+        run: |
+          # Find Android build tools path
+          BUILD_TOOLS_DIR=$(ls -d $ANDROID_HOME/build-tools/* | tail -n 1)
+          
+          # ZipAlign the unsigned APK
+          $BUILD_TOOLS_DIR/zipalign -v -p 4 \
+            android/app/build/outputs/apk/release/app-release-unsigned.apk \
+            aureli-release-aligned.apk
+
+          # Sign the aligned APK with apksigner
+          $BUILD_TOOLS_DIR/apksigner sign \
+            --ks release-key.jks \
+            --ks-key-alias "${{ secrets.KEY_ALIAS }}" \
+            --ks-pass pass:"${{ secrets.KEYSTORE_PASSWORD }}" \
+            --key-pass pass:"${{ secrets.KEY_PASSWORD }}" \
+            --out aureli-release-signed.apk \
+            aureli-release-aligned.apk
 
       - name: Upload Signed APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: app-release-signed
-          path: ${{ steps.sign_app.outputs.signedReleaseFile }}
+          name: aureli-release-signed
+          path: aureli-release-signed.apk
