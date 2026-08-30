@@ -11,63 +11,111 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      - name: Checkout Code
         uses: actions/checkout@v4
+
+      - name: Set up Java JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: 'zulu'
+          java-version: '21'
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: 'npm'
+          node-version: '22'
 
-      - name: Set up Java JDK
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'zulu'
-          java-version: '17'
-
-      - name: Install Dependencies
-        run: npm ci
-
-      - name: Build Web App
-        run: npm run build
-
-      - name: Sync Capacitor Android
-        run: npx cap sync android
-
-      - name: Decode Keystore
-        env:
-          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      - name: Install Dependencies & Build Web Project
         run: |
-          echo "$KEYSTORE_BASE64" | base64 --decode > android/app/release-key.jks
+          npm ci || npm install
+          npm install --save-dev @capacitor/cli @capacitor/core @capacitor/android @capacitor/assets
+          
+          # Build your React/Vite project into production JavaScript
+          npm run build
 
-      - name: Build Gradle Release APK
+          # Ensure Capacitor Android platform exists
+          if [ ! -d "android" ]; then
+            npx cap add android
+          fi
+
+      - name: Generate Assets (If present)
+        run: |
+          if [ -d "assets" ]; then
+            npx @capacitor/assets generate --android || echo "Asset generation failed, continuing..."
+          fi
+
+      - name: Sync Capacitor Platform
+        run: |
+          npx cap copy android
+          npx cap sync android
+
+      - name: Fix Kotlin Duplicate Dependencies
+        run: |
+          BUILD_GRADLE="android/build.gradle"
+          if [ -f "$BUILD_GRADLE" ]; then
+            cat << 'EOF' >> $BUILD_GRADLE
+
+          allprojects {
+              configurations.all {
+                  resolutionStrategy {
+                      dependencySubstitution {
+                          substitute module('org.jetbrains.kotlin:kotlin-stdlib-jdk7') using module('org.jetbrains.kotlin:kotlin-stdlib:1.8.22')
+                          substitute module('org.jetbrains.kotlin:kotlin-stdlib-jdk8') using module('org.jetbrains.kotlin:kotlin-stdlib:1.8.22')
+                      }
+                  }
+              }
+          }
+          EOF
+          fi
+
+      - name: Make Gradle Executable
+        run: chmod +x android/gradlew
+
+      - name: Generate Keystore
+        env:
+          KEYSTORE_PASS: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_PASS: ${{ secrets.KEY_PASSWORD }}
+          ALIAS_NAME: ${{ secrets.KEY_ALIAS }}
+        run: |
+          keytool -genkeypair -v \
+            -keystore release-key.jks \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000 \
+            -alias "$ALIAS_NAME" \
+            -storepass "$KEYSTORE_PASS" \
+            -keypass "$KEY_PASS" \
+            -dname "CN=Aureli Developer, OU=Dev, O=Aureli, L=City, ST=State, C=US"
+
+      - name: Build Release APK with Gradle
         run: |
           cd android
           ./gradlew assembleRelease
 
-      - name: Align APK
-        run: |
-          $ANDROID_HOME/build-tools/34.0.0/zipalign -v -p 4 \
-            android/app/build/outputs/apk/release/app-release-unsigned.apk \
-            android/app/build/outputs/apk/release/app-release-aligned.apk
-
-      - name: Sign APK
+      - name: Align and Sign APK
         env:
-          KS_PASS: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
-          KEY_PASS: ${{ secrets.RELEASE_KEY_PASSWORD }}
-          ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          KEYSTORE_PASS: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_PASS: ${{ secrets.KEY_PASSWORD }}
+          ALIAS_NAME: ${{ secrets.KEY_ALIAS }}
         run: |
-          $ANDROID_HOME/build-tools/34.0.0/apksigner sign \
-            --ks android/app/release-key.jks \
-            --ks-pass env:KS_PASS \
-            --key-pass env:KEY_PASS \
-            --ks-key-alias "$ALIAS" \
-            --out android/app/build/outputs/apk/release/app-release-signed.apk \
-            android/app/build/outputs/apk/release/app-release-aligned.apk
+          BUILD_TOOLS_DIR=$(ls -d $ANDROID_HOME/build-tools/* | tail -n 1)
+          
+          # ZipAlign the unsigned release APK
+          $BUILD_TOOLS_DIR/zipalign -v -p 4 \
+            android/app/build/outputs/apk/release/app-release-unsigned.apk \
+            aureli-release-aligned.apk
 
-      - name: Upload Signed APK
+          # Sign the aligned APK with apksigner using exact env variables
+          $BUILD_TOOLS_DIR/apksigner sign \
+            --ks release-key.jks \
+            --ks-key-alias "$ALIAS_NAME" \
+            --ks-pass env:KEYSTORE_PASS \
+            --key-pass env:KEY_PASS \
+            --out aureli-release-signed.apk \
+            aureli-release-aligned.apk
+
+      - name: Upload Signed APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: release-apk
-          path: android/app/build/outputs/apk/release/app-release-signed.apk
+          name: aureli-release-signed
+          path: aureli-release-signed.apk
