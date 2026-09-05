@@ -71,10 +71,23 @@ jobs:
             npx @capacitor/assets generate --android || echo "Asset generation failed, continuing..."
           fi
 
-      - name: Sync Capacitor Platform
+      - name: Sync Capacitor Platform & Set minSDK
         run: |
           npx cap copy android
           npx cap sync android
+
+          # Force minSdkVersion to 24 to satisfy Amazon Appstore requirements
+          VAR_GRADLE="android/variables.gradle"
+          if [ -f "$VAR_GRADLE" ]; then
+            sed -i 's/minSdkVersion = [0-9]*/minSdkVersion = 24/g' $VAR_GRADLE
+            echo "Forced minSdkVersion = 24 in variables.gradle"
+          fi
+
+          APP_GRADLE="android/app/build.gradle"
+          if [ -f "$APP_GRADLE" ]; then
+            sed -i 's/minSdkVersion [0-9]*/minSdkVersion 24/g' $APP_GRADLE
+            echo "Forced minSdkVersion 24 in app/build.gradle"
+          fi
 
       - name: Auto-Bump Android Version Code
         run: |
