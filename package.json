@@ -1,24 +1,29 @@
 {
-  "name": "aureli-app",
+  "name": "aureli-prototype",
   "private": true,
   "version": "1.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "tsc && vite build",
+    "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview"
   },
   "dependencies": {
-    "lucide-react": "^0.400.0",
+    "@capacitor/android": "^6.0.0",
+    "@capacitor/core": "^6.0.0",
+    "@revenuecat/purchases-capacitor": "^8.0.0",
+    "lucide-react": "^0.380.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
-    "@capacitor/core": "^6.0.0",
-    "@capacitor/android": "^6.0.0",
-    "@revenuecat/purchases-capacitor": "^8.0.0",
-    "@capacitor-community/in-app-purchase": "^6.0.0",
   },
   "devDependencies": {
-    "@vitejs/plugin-react": "^4.3.1",
-    "vite": "^5.4.0"
+    "@capacitor/assets": "^3.0.0",
+    "@capacitor/cli": "^6.0.0",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.0",
+    "typescript": "^5.2.2",
+    "vite": "^5.2.11"
   }
 }
