@@ -71,25 +71,40 @@ jobs:
             npx @capacitor/assets generate --android || echo "Asset generation failed, continuing..."
           fi
 
-      - name: Sync Capacitor Platform & Set minSDK
+      - name: Sync Capacitor Platform & Set SDK Versions
         run: |
           npx cap copy android
           npx cap sync android
 
-          # Safely update minSdkVersion in variables.gradle
+          # Update variables.gradle safely
           VAR_GRADLE="android/variables.gradle"
           if [ -f "$VAR_GRADLE" ]; then
             sed -i 's/minSdkVersion = .*/minSdkVersion = 24/g' $VAR_GRADLE
-            echo "Forced minSdkVersion = 24 in variables.gradle"
+            sed -i 's/compileSdkVersion = .*/compileSdkVersion = 34/g' $VAR_GRADLE
+            sed -i 's/targetSdkVersion = .*/targetSdkVersion = 34/g' $VAR_GRADLE
+            echo "Updated SDK versions in variables.gradle"
           fi
 
-      - name: Auto-Bump Android Version Code
+      - name: Configure Versioning and Supported Architectures
         run: |
           APP_GRADLE="android/app/build.gradle"
           if [ -f "$APP_GRADLE" ]; then
-            # Replaces versionCode with the GitHub Actions run number so every build is unique
+            # Set explicit versionCode and versionName
             sed -i 's/versionCode [0-9]*/versionCode '${{ github.run_number }}'/g' $APP_GRADLE
-            echo "Updated versionCode to ${{ github.run_number }}"
+            sed -i 's/versionName .*/versionName "1.0.'${{ github.run_number }}'"/g' $APP_GRADLE
+            
+            # Ensure ndk ABI filters include all standard device architectures
+            cat << 'EOF' >> $APP_GRADLE
+
+          android {
+              defaultConfig {
+                  ndk {
+                      abiFilters 'armeabi-v7a', 'arm64-v8a', 'x86', 'x86_64'
+                  }
+              }
+          }
+          EOF
+            echo "Configured version code ${{ github.run_number }} and multi-arch ABI filters"
           fi
 
       - name: Fix Kotlin Duplicate Dependencies
