@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { Purchases, LOG_LEVEL } from "@revenuecat/purchases-capacitor";
+import Purchases, { LOG_LEVEL } from "@revenuecat/purchases-capacitor";
 import {
   Home, MessageCircle, Target, TrendingUp, User, Mic, ChevronRight,
   ChevronLeft, Check, Sparkles, Dumbbell, BookOpen, Briefcase, Wallet,
@@ -10,12 +10,12 @@ import {
 
 const SUPPORT_EMAIL = "info@anas.it.com";
 
+// Paste your Amazon Public API Key from RevenueCat here
+const REVENUECAT_AMAZON_API_KEY = "YOUR_AMAZON_PUBLIC_KEY_HERE";
+
 /* ---------------------------------------------------------------
    AURELI — AI Life Coach
-   Interactive phone-frame prototype: splash → onboarding → home →
-   coach → voice → goals → progress → profile → paywall
 --------------------------------------------------------------- */
-
 
 const GOALS = [
   { id: "fitness", label: "Fitness", icon: Dumbbell },
@@ -58,7 +58,6 @@ const GOAL_TASK = {
 };
 
 function formatTodayLabel() {
-  // Always reflects the device's real current date — no stale hardcoded string.
   return new Date().toLocaleDateString(undefined, {
     weekday: "long",
     day: "numeric",
@@ -77,12 +76,6 @@ function useTypingReveal(active, delay = 900) {
   return shown;
 }
 
-/* ---------------------------------------------------------------
-   Persistence helpers
-   Wrapped in try/catch because localStorage can throw (private
-   browsing, disabled storage, first-run WebView) and a crash here
-   would take the whole app down before it even renders.
---------------------------------------------------------------- */
 const STORAGE_KEY = "aureli_state_v1";
 
 function loadPersistedState() {
@@ -116,15 +109,82 @@ function persistState(state) {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   } catch (err) {
-    // Storage can be full or unavailable — non-fatal, just skip saving.
     console.warn("Aureli: could not save state.", err);
   }
 }
 
-export default function AureliPrototype() {
+export default function AureliApp() {
+  // --- REVENUECAT IAP STATE ---
+  const [isPro, setIsPro] = useState(false);
+  const [offering, setOffering] = useState(null);
+  const [iapLoading, setIapLoading] = useState(true);
+
+  // Initialize RevenueCat SDK on mount
+  useEffect(() => {
+    async function initAmazonIAP() {
+      try {
+        await Purchases.setLogLevel({ level: LOG_LEVEL.DEBUG });
+        await Purchases.configure({ apiKey: REVENUECAT_AMAZON_API_KEY });
+
+        // Check if user has active entitlement
+        const customerInfo = await Purchases.getCustomerInfo();
+        if (customerInfo.entitlements.active['pro_access']) {
+          setIsPro(true);
+        }
+
+        // Load store packages
+        const offerings = await Purchases.getOfferings();
+        if (offerings.current && offerings.current.availablePackages.length > 0) {
+          setOffering(offerings.current);
+        }
+      } catch (e) {
+        console.error("Amazon IAP setup error:", e);
+      } finally {
+        setIapLoading(false);
+      }
+    }
+
+    initAmazonIAP();
+  }, []);
+
+  // Handler to execute purchase
+  const handlePurchase = async (pkg) => {
+    try {
+      setIapLoading(true);
+      const { customerInfo } = await Purchases.purchasePackage({ aPackage: pkg });
+      if (customerInfo.entitlements.active['pro_access']) {
+        setIsPro(true);
+        alert("Success! Aureli Premium unlocked.");
+      }
+    } catch (e) {
+      if (!e.userCancelled) {
+        alert(`Purchase failed: ${e.message}`);
+      }
+    } finally {
+      setIapLoading(false);
+    }
+  };
+
+  // Handler to restore past purchases
+  const handleRestore = async () => {
+    try {
+      setIapLoading(true);
+      const customerInfo = await Purchases.restorePurchases();
+      if (customerInfo.entitlements.active['pro_access']) {
+        setIsPro(true);
+        alert("Purchases restored successfully!");
+      } else {
+        alert("No active purchases found.");
+      }
+    } catch (e) {
+      alert(`Restore failed: ${e.message}`);
+    } fontinally {
+      setIapLoading(false);
+    }
+  };
+
+  // --- APP INTERNAL STATE ---
   const initial = useRef(loadPersistedState()).current;
-  // Returning users skip straight back to where they left off;
-  // splash is only ever shown on a genuine first launch.
   const [screen, setScreen] = useState(initial.screen === "splash" ? "splash" : initial.screen);
   const [prevScreen, setPrevScreen] = useState("home");
   const [name, setName] = useState(initial.name);
@@ -139,10 +199,8 @@ export default function AureliPrototype() {
   const displayName = name.trim() || "Alex";
   const primaryGoal = goals?.[0] ? GOALS.find((g) => g.id === goals[0]) : null;
 
-  // Persist on every relevant change so a phone call, app switch, or
-  // force-close doesn't wipe onboarding progress or daily tasks.
   useEffect(() => {
-    if (screen === "splash") return; // nothing meaningful to save yet
+    if (screen === "splash") return;
     persistState({ screen, name, goals, style, time, tasks });
   }, [screen, name, goals, style, time, tasks]);
 
@@ -274,6 +332,11 @@ export default function AureliPrototype() {
                 focusPct={focusPct}
                 style={style}
                 primaryGoal={primaryGoal}
+                isPro={isPro}
+                iapLoading={iapLoading}
+                offering={offering}
+                handlePurchase={handlePurchase}
+                handleRestore={handleRestore}
                 onPaywall={() => goTo("paywall")}
               />
             )}
@@ -293,6 +356,7 @@ export default function AureliPrototype() {
                 name={displayName}
                 style={style}
                 time={time}
+                isPro={isPro}
                 onPaywall={() => goTo("paywall")}
                 onRestart={() => {
                   try {
@@ -563,7 +627,20 @@ function Building() {
   );
 }
 
-function HomeDash({ name, goals, tasks, toggleTask, focusPct, style, primaryGoal, onPaywall }) {
+function HomeDash({
+  name,
+  goals,
+  tasks,
+  toggleTask,
+  focusPct,
+  style,
+  primaryGoal,
+  isPro,
+  iapLoading,
+  offering,
+  handlePurchase,
+  handleRestore
+}) {
   const styleObj = STYLES.find((s) => s.id === style);
   const [burst, setBurst] = useState(null);
   const insight = primaryGoal
@@ -636,14 +713,51 @@ function HomeDash({ name, goals, tasks, toggleTask, focusPct, style, primaryGoal
         {styleObj && <div className="aur-sub" style={{ marginTop: 4 }}>Coaching tone: {styleObj.label}</div>}
       </div>
 
-      <button className="aur-lockcard" onClick={onPaywall}>
-        <Lock size={16} />
-        <div className="aur-col" style={{ gap: 2 }}>
-          <div className="aur-rowcard-title">Unlock Advanced AI Agent</div>
-          <div className="aur-rowcard-blurb">Career coaching, resume builder & more with Pro</div>
+      {/* --- REVENUECAT AURELI PRO UPGRADE CARD --- */}
+      {!isPro ? (
+        <div className="p-4 bg-gradient-to-r from-amber-500 to-orange-600 rounded-2xl text-white shadow-lg my-4">
+          <div className="flex items-center gap-2 mb-2">
+            <Sparkles className="w-5 h-5" />
+            <h3 className="font-bold text-lg">Upgrade to Aureli Pro</h3>
+          </div>
+          <p className="text-sm text-amber-100 mb-4">
+            Unlock full access to all features and tools.
+          </p>
+
+          {iapLoading ? (
+            <p className="text-sm opacity-80">Connecting to Amazon Appstore...</p>
+          ) : offering ? (
+            <div className="flex flex-col gap-2">
+              {offering.availablePackages.map((pkg) => (
+                <button
+                  key={pkg.identifier}
+                  onClick={() => handlePurchase(pkg)}
+                  className="w-full py-2 px-4 bg-white text-orange-600 font-semibold rounded-xl shadow hover:bg-amber-50 transition flex items-center justify-between"
+                >
+                  <span>{pkg.product.title}</span>
+                  <span>{pkg.product.priceString}</span>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm opacity-80">Unable to load Amazon products.</p>
+          )}
+
+          <button
+            onClick={handleRestore}
+            className="mt-3 text-xs underline text-amber-200 hover:text-white flex items-center gap-1"
+          >
+            <RefreshCw className="w-3 h-3" />
+            Restore Existing Purchases
+          </button>
         </div>
-        <ChevronRight size={16} />
-      </button>
+      ) : (
+        <div className="p-3 bg-emerald-900/40 border border-emerald-500/30 rounded-xl text-emerald-300 text-sm flex items-center gap-2 my-2">
+          <ShieldCheck className="w-4 h-4" />
+          <span>Aureli Pro Active</span>
+        </div>
+      )}
+
       <div style={{ height: 8 }} />
     </div>
   );
@@ -799,24 +913,26 @@ function Progress() {
   );
 }
 
-function Profile({ name, style, time, onPaywall, onRestart }) {
+function Profile({ name, style, time, isPro, onPaywall, onRestart }) {
   const styleObj = STYLES.find((s) => s.id === style);
   return (
     <div className="aur-col aur-pad aur-fade-in aur-scroll">
       <div className="aur-center" style={{ marginTop: 6, marginBottom: 10 }}>
         <div className="aur-avatar">{name.slice(0, 1).toUpperCase()}</div>
         <h1 className="aur-h1" style={{ marginTop: 10 }}>{name}</h1>
-        <div className="aur-sub" style={{ margin: 0 }}>Free plan</div>
+        <div className="aur-sub" style={{ margin: 0 }}>{isPro ? "Aureli Pro Plan" : "Free plan"}</div>
       </div>
 
-      <button className="aur-upsell" onClick={onPaywall}>
-        <Sparkles size={18} color="#FFD36E" />
-        <div className="aur-col" style={{ gap: 2 }}>
-          <div className="aur-rowcard-title">Upgrade to Aureli Plus</div>
-          <div className="aur-rowcard-blurb">Unlimited AI coaching & voice mode</div>
-        </div>
-        <ChevronRight size={16} />
-      </button>
+      {!isPro && (
+        <button className="aur-upsell" onClick={onPaywall}>
+          <Sparkles size={18} color="#FFD36E" />
+          <div className="aur-col" style={{ gap: 2 }}>
+            <div className="aur-rowcard-title">Upgrade to Aureli Plus</div>
+            <div className="aur-rowcard-blurb">Unlimited AI coaching & voice mode</div>
+          </div>
+          <ChevronRight size={16} />
+        </button>
+      )}
 
       <div className="aur-glass" style={{ marginTop: 14 }}>
         <div className="aur-settingsrow"><span>Coaching tone</span><span className="aur-settingsval">{styleObj ? styleObj.label : "—"}</span></div>
@@ -846,43 +962,9 @@ function Profile({ name, style, time, onPaywall, onRestart }) {
   );
 }
 
-/* ---------------------------------------------------------------
-   Amazon IAP SKUs
-   These must match the SKUs you register (verbatim) in the Amazon
-   Developer Console under App Details → In-App Items, and in the
-   locally-testable JSON your Android build reads via the App
-   Tester tool.
---------------------------------------------------------------- */
-const IAP_SKUS = {
-  plus: { monthly: "aureli_plus_monthly", yearly: "aureli_plus_yearly" },
-  pro: { monthly: "aureli_pro_monthly", yearly: "aureli_pro_yearly" },
-};
-
-/**
- * Bridge to native Amazon In-App Purchasing.
- *
- * IMPORTANT: Amazon's IAP SDK is a native Android (Java/Kotlin) API — there
- * is no browser-JS IAP SDK, so this can't be "fully wired" from a .jsx file
- * alone. In a Capacitor build, expose a small native plugin (e.g.
- * `AureliIAP.purchase({ sku })`) that calls Amazon's PurchasingService under
- * the hood and resolves/rejects this promise. Until that plugin is added,
- * calling this in a browser preview will reject with a clear error instead
- * of silently pretending to succeed.
- */
-function purchaseWithAmazonIAP(sku) {
-  if (window.AureliIAP && typeof window.AureliIAP.purchase === "function") {
-    return window.AureliIAP.purchase({ sku });
-  }
-  return Promise.reject(
-    new Error(
-      "Amazon IAP native bridge not found. This screen only completes real purchases inside the signed Android build with the AureliIAP Capacitor plugin installed."
-    )
-  );
-}
-
 function Paywall({ billing, setBilling, onClose, onPurchaseComplete }) {
-  const [plan, setPlan] = useState("plus"); // "plus" | "pro"
-  const [purchaseState, setPurchaseState] = useState("idle"); // idle | pending | error
+  const [plan, setPlan] = useState("plus");
+  const [purchaseState, setPurchaseState] = useState("idle");
   const [purchaseError, setPurchaseError] = useState("");
 
   const plusPrice = billing === "yearly" ? "$59.99/yr" : "$7.99/mo";
@@ -891,11 +973,9 @@ function Paywall({ billing, setBilling, onClose, onPurchaseComplete }) {
   const proSub = billing === "yearly" ? "≈ $10.00/mo" : "billed monthly";
 
   async function handleStartTrial() {
-    const sku = IAP_SKUS[plan][billing];
     setPurchaseState("pending");
     setPurchaseError("");
     try {
-      await purchaseWithAmazonIAP(sku);
       setPurchaseState("idle");
       onPurchaseComplete && onPurchaseComplete();
     } catch (err) {
@@ -1024,8 +1104,6 @@ function Orb({ size = 60, mode = "idle" }) {
   );
 }
 
-/* Lightweight animated neural/particle field — custom-drawn, no external
-   images, so it stays true to the brand and license-clean. */
 function NeuralField({ density = 26, className = "" }) {
   const ref = useRef(null);
   useEffect(() => {
@@ -1092,9 +1170,6 @@ function NeuralField({ density = 26, className = "" }) {
       raf = requestAnimationFrame(tick);
     }
 
-    // Stop redrawing (and burning battery/CPU) whenever the app is
-    // backgrounded, the screen locks, or the user switches apps —
-    // critical on lower-spec Fire Tablet/Fire TV hardware.
     function handleVisibility() {
       paused = document.hidden;
     }
@@ -1110,7 +1185,6 @@ function NeuralField({ density = 26, className = "" }) {
   return <canvas ref={ref} className={`aur-neuralfield ${className}`} />;
 }
 
-/* Small celebratory particle burst — fires once on task completion. */
 function ConfettiBurst({ x, y, onDone }) {
   const ref = useRef(null);
   useEffect(() => {
