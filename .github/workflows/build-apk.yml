@@ -27,8 +27,7 @@ jobs:
 
       - name: Install Dependencies & Build Web Project
         run: |
-          npm ci || npm install
-          npm install --save-dev @capacitor/cli @capacitor/core @capacitor/android @capacitor/assets
+          npm install --legacy-peer-deps
           
           # Build your React/Vite project into production JavaScript
           npm run build
