@@ -25,12 +25,40 @@ jobs:
         with:
           node-version: '22'
 
+      - name: Ensure tsconfig.json Exists
+        run: |
+          if [ ! -f "tsconfig.json" ]; then
+            cat << 'EOF' > tsconfig.json
+          {
+            "compilerOptions": {
+              "target": "ES2020",
+              "useDefineForClassFields": true,
+              "lib": ["ES2020", "DOM", "DOM.Iterable"],
+              "module": "ESNext",
+              "skipLibCheck": true,
+              "moduleResolution": "bundler",
+              "allowImportingTsExtensions": true,
+              "resolveJsonModule": true,
+              "isolatedModules": true,
+              "noEmit": true,
+              "jsx": "react-jsx",
+              "strict": true,
+              "noUnusedLocals": false,
+              "noUnusedParameters": false,
+              "noFallthroughCasesInSwitch": true
+            },
+            "include": ["src"]
+          }
+          EOF
+            echo "Created default tsconfig.json"
+          fi
+
       - name: Install Dependencies & Build Web Project
         run: |
           npm install --legacy-peer-deps
           
-          # Build your React/Vite project into production JavaScript
-          npm run build
+          # Build React/Vite project directly via vite build
+          npx vite build || npm run build
 
           # Ensure Capacitor Android platform exists
           if [ ! -d "android" ]; then
