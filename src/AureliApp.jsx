@@ -178,7 +178,7 @@ export default function AureliApp() {
       }
     } catch (e) {
       alert(`Restore failed: ${e.message}`);
-    } fontinally {
+    } finally {
       setIapLoading(false);
     }
   };
