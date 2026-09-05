@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import { Purchases, LOG_LEVEL } from "@revenuecat/purchases-capacitor";
 import {
   Home, MessageCircle, Target, TrendingUp, User, Mic, ChevronRight,
   ChevronLeft, Check, Sparkles, Dumbbell, BookOpen, Briefcase, Wallet,
@@ -14,6 +15,7 @@ const SUPPORT_EMAIL = "info@anas.it.com";
    Interactive phone-frame prototype: splash → onboarding → home →
    coach → voice → goals → progress → profile → paywall
 --------------------------------------------------------------- */
+
 
 const GOALS = [
   { id: "fitness", label: "Fitness", icon: Dumbbell },
