@@ -1,6 +1,7 @@
 {
   "appId": "com.aureliai.app",
   "appName": "Aureli AI",
+  "version": "1.0.1",
   "webDir": "dist",
   "bundledWebRuntime": false
 }
