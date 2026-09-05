@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import Purchases, { LOG_LEVEL } from "@revenuecat/purchases-capacitor";
+import { Purchases, LOG_LEVEL } from "@revenuecat/purchases-capacitor";
 import {
   Home, MessageCircle, Target, TrendingUp, User, Mic, ChevronRight,
   ChevronLeft, Check, Sparkles, Dumbbell, BookOpen, Briefcase, Wallet,
